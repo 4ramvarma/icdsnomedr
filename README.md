@@ -229,5 +229,4 @@ If you use this package in your research, please cite:
 
 ---
 
-Made with ❤️ by 4ramvarmamake
 ```
