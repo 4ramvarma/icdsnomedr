@@ -1,0 +1,35 @@
+Package: icdsnomedr
+Type: Package
+Title: ICD to SNOMED CT Concept Mapper for OMOP CDM
+Version: 1.0.0
+Authors@R: c(
+    person("4ramvarma", role = c("aut", "cre",
+           email = "your.email@example.com")
+    )
+)
+Description: Maps ICD-9 and ICD-10 codes to SNOMED CT concepts using the 
+    Observational Medical Outcomes Partnership (OMOP) Common Data Model (CDM).
+    Provides direct mappings and hierarchical fallback mechanisms with 
+    confidence scoring and manual review flagging.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.1
+Depends: 
+    R (>= 4.0.0)
+Imports:
+    DBI,
+    odbc,
+    DatabaseConnector,
+    dplyr,
+    CDMConnector,
+    SqlRender,
+    tidyr,
+    glue
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+URL: https://github.com/4ramvarma/icdsnomedr
+BugReports: https://github.com/4ramvarma/icdsnomedr/issues
