@@ -1,7 +1,7 @@
 # icdsnomedr <img src="man/figures/logo.png" align="right" height="139" />
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/4ramvarmamake/icdsnomedr/workflows/R-CMD-check/badge.svg)](https://github.com/4ramvarmamake/icdsnomedr/actions)
+[![R-CMD-check](https://github.com/4ramvarma/icdsnomedr/workflows/R-CMD-check/badge.svg)](https://github.com/4ramvarma/icdsnomedr/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Project Status: Active](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 <!-- badges: end -->
@@ -34,7 +34,7 @@ You can install the development version from GitHub:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("4ramvarmamake/icdsnomedr")
+devtools::install_github("4ramvarma/icdsnomedr")
 ```
 
 ## Prerequisites
@@ -181,7 +181,7 @@ The function automatically flags mappings that may require manual review:
 
 ## Documentation
 
-Full documentation is available at the [package website](https://4ramvarmamake.github.io/icdsnomedr/).
+Full documentation is available at the [package website](https://4ramvarma.github.io/icdsnomedr/).
 
 For function-level help:
 ```r
@@ -208,10 +208,10 @@ If you use this package in your research, please cite:
 
 ```
 @software{icdsnomedr,
-  author = {4ramvarmamake},
+  author = {4ramvarma},
   title = {icdsnomedr: ICD to SNOMED CT Concept Mapper for OMOP CDM},
   year = {2025},
-  url = {https://github.com/4ramvarmamake/icdsnomedr}
+  url = {https://github.com/4ramvarma/icdsnomedr}
 }
 ```
 
@@ -223,10 +223,10 @@ If you use this package in your research, please cite:
 
 ## Support
 
-- 📧 Open an [issue](https://github.com/4ramvarmamake/icdsnomedr/issues) for bug reports
-- 💬 Start a [discussion](https://github.com/4ramvarmamake/icdsnomedr/discussions) for questions
-- 📖 Check the [documentation](https://4ramvarmamake.github.io/icdsnomedr/)
+- 📧 Open an [issue](https://github.com/4ramvarma/icdsnomedr/issues) for bug reports
+- 💬 Start a [discussion](https://github.com/4ramvarma/icdsnomedr/discussions) for questions
+- 📖 Check the [documentation](https://4ramvarma.github.io/icdsnomedr/)
 
 ---
 
-```
+Made with pain by 4ramvarma
