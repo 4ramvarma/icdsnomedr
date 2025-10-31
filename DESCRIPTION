@@ -2,10 +2,7 @@ Package: icdsnomedr
 Type: Package
 Title: ICD to SNOMED CT Concept Mapper for OMOP CDM
 Version: 1.0.0
-Authors@R: c(
-    person("4ramvarma", role = c("aut", "cre"),
-           email = "your.email@example.com")
-)
+Authors@R: person("4ramvarma", email = "your.email@example.com", role = c("aut", "cre"))
 Description: Maps ICD-9 and ICD-10 codes to SNOMED CT concepts using the 
     Observational Medical Outcomes Partnership (OMOP) Common Data Model (CDM).
     Provides direct mappings and hierarchical fallback mechanisms with 
