@@ -78,7 +78,7 @@
 #'
 #' @importFrom DBI dbGetQuery
 #' @export
-hcpcs_to_snomed_mapper <- function(
+general_code_mapper <- function(
     con,
     input_data,
     database_name,
