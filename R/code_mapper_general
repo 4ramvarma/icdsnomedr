@@ -1,0 +1,299 @@
+#' Map HCPCS Codes to SNOMED or Other Vocabulary Concepts
+#'
+#' This function maps HCPCS codes to SNOMED CT or other target concepts using the
+#' OMOP Common Data Model. It provides direct mappings via 'Maps to' relationships
+#' and fallback mechanisms using hierarchical relationships when direct mappings 
+#' are not available.
+#'
+#' @param con A database connection object created with DatabaseConnector::connect()
+#' @param input_data A data frame with columns: input_code, input_vocab
+#'   \itemize{
+#'     \item input_code: The HCPCS code (e.g., "J1324", "E1234")
+#'     \item input_vocab: Vocabulary identifier (e.g., "HCPCS")
+#'   }
+#' @param database_name Character string specifying the OMOP CDM database name
+#'   (default: "iqvia_pharmetricsplus_claims_omop_20260331")
+#' @param max_mapping_distance Integer specifying maximum hierarchy distance to
+#'   explore (default: 3)
+#'
+#' @return A data frame containing mapping results with the following columns:
+#'   \itemize{
+#'     \item input_code: Original input HCPCS code, ICD code and etc.
+#'     \item input_vocab: Original input vocabulary
+#'     \item source_concept_name: Source concept name
+#'     \item target_concept_id: Mapped concept ID
+#'     \item target_code: Mapped concept code
+#'     \item target_name: Mapped concept name
+#'     \item target_vocab: Target vocabulary (e.g., RxNorm, SNOMED, CPT)
+#'     \item target_domain: Target concept domain
+#'     \item standard_concept: Standard concept flag
+#'     \item mapping_type: Type of mapping (DIRECT, DESCENDANT, ANCESTOR)
+#'     \item mapping_confidence: Confidence level (HIGH, MEDIUM, LOW)
+#'     \item mapping_distance: Distance in hierarchy
+#'     \item review_flag: Manual review flag (MAPPED, REVIEW_SUGGESTED, REVIEW_REQUIRED)
+#'   }
+#'
+#' @details
+#' The function performs mapping in multiple stages:
+#' \enumerate{
+#'   \item Direct 'Maps to' relationships
+#'   \item Hierarchical exploration (descendants and ancestors)
+#'   \item Flagging of unmapped codes for manual review
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Create connection
+#' connectionDetails <- DatabaseConnector::createConnectionDetails(
+#'   dbms = "redshift",
+#'   server = Sys.getenv("SERVER_SERVERLESS"),
+#'   user = Sys.getenv("USERNAME"),
+#'   password = Sys.getenv("PASSWORD"),
+#'   port = "5439",
+#'   pathToDriver = "~"
+#' )
+#' con <- DatabaseConnector::connect(connectionDetails)
+#'
+#' # Prepare input data
+#' input_data <- data.frame(
+#'   input_code = c("J1324", "J0799"),
+#'   input_vocab = c("HCPCS", "HCPCS"),
+#'   database_name = "iqvia_pharmetricsplus_claims_omop_20260331",
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' # Run mapping
+#' results <- hcpcs_to_snomed_mapper(
+#'   con = con,
+#'   input_data = input_data,
+#'   max_mapping_distance = 3,
+#'    database_name
+#' )
+#'
+#' View(results)
+#'
+#' # Disconnect
+#' DatabaseConnector::disconnect(con)
+#' }
+#'
+#' @importFrom DBI dbGetQuery
+#' @export
+hcpcs_to_snomed_mapper <- function(
+    con,
+    input_data,
+    database_name,
+    max_mapping_distance = 3
+) {
+  
+  # Validate input_data structure
+  if (!all(c("input_code", "input_vocab") %in% names(input_data))) {
+    stop("input_data must have columns: input_code, input_vocab")
+  }
+  
+  # Validate connection
+  if (!inherits(con, "DatabaseConnectorConnection") && !inherits(con, "JdbcConnection")) {
+    stop("con must be a valid database connection created with DatabaseConnector::connect()")
+  }
+  
+  # Validate numeric parameters
+  if (!is.numeric(max_mapping_distance) || max_mapping_distance < 1) {
+    stop("max_mapping_distance must be a positive integer")
+  }
+  
+  # Create the input_codes CTE string from the data frame
+  input_codes_sql <- paste0(
+    "SELECT '", input_data$input_code, "' AS input_code, ",
+    "'", input_data$input_vocab, "' AS input_vocab",
+    collapse = "\n    UNION ALL "
+  )
+  
+  # Build the complete query
+  query <- paste0("
+-- HCPCS to Target Vocabulary Mapper
+-- Maps HCPCS codes to available concepts via direct and hierarchical relationships
+-- For use with OMOP CDM on Amazon Redshift
+
+WITH input_codes AS (
+    ", input_codes_sql, "
+),
+
+-- Step 1: Find source concepts
+source_concepts AS (
+    SELECT 
+        ic.input_code,
+        ic.input_vocab,
+        c.concept_id AS source_concept_id,
+        c.concept_code,
+        c.concept_name AS source_concept_name,
+        c.vocabulary_id,
+        c.domain_id
+    FROM input_codes ic
+    LEFT JOIN ", database_name, ".concept c 
+        ON UPPER(TRIM(ic.input_code)) = UPPER(TRIM(c.concept_code))
+        AND c.vocabulary_id = ic.input_vocab
+        AND c.invalid_reason IS NULL
+),
+
+-- Step 2: Direct 'Maps to' relationships
+direct_mappings AS (
+    SELECT 
+        sc.input_code,
+        sc.input_vocab,
+        sc.source_concept_id,
+        sc.source_concept_name,
+        c_target.concept_id AS target_concept_id,
+        c_target.concept_code AS target_code,
+        c_target.concept_name AS target_name,
+        c_target.vocabulary_id AS target_vocab,
+        c_target.domain_id AS target_domain,
+        c_target.standard_concept,
+        'DIRECT' AS mapping_type,
+        'HIGH' AS mapping_confidence,
+        0 AS mapping_distance
+    FROM source_concepts sc
+    INNER JOIN ", database_name, ".concept_relationship cr 
+        ON sc.source_concept_id = cr.concept_id_1
+        AND cr.relationship_id = 'Maps to'
+        AND cr.invalid_reason IS NULL
+        AND CURRENT_DATE BETWEEN cr.valid_start_date AND cr.valid_end_date
+    INNER JOIN ", database_name, ".concept c_target 
+        ON cr.concept_id_2 = c_target.concept_id
+        AND c_target.invalid_reason IS NULL
+),
+
+-- Step 3: Fallback - Hierarchy exploration for unmapped codes
+hierarchy_mappings AS (
+    SELECT 
+        sc.input_code,
+        sc.input_vocab,
+        sc.source_concept_id,
+        sc.source_concept_name,
+        c2.concept_id AS target_concept_id,
+        c2.concept_code AS target_code,
+        c2.concept_name AS target_name,
+        c2.vocabulary_id AS target_vocab,
+        c2.domain_id AS target_domain,
+        c2.standard_concept,
+        CASE 
+            WHEN ca.ancestor_concept_id = sc.source_concept_id THEN 'DESCENDANT'
+            ELSE 'ANCESTOR'
+        END AS mapping_type,
+        CASE 
+            WHEN ca.min_levels_of_separation = 1 THEN 'MEDIUM'
+            ELSE 'LOW'
+        END AS mapping_confidence,
+        ca.min_levels_of_separation AS mapping_distance
+    FROM source_concepts sc
+    JOIN ", database_name, ".concept_ancestor ca
+        ON (ca.ancestor_concept_id = sc.source_concept_id 
+            OR ca.descendant_concept_id = sc.source_concept_id)
+    JOIN ", database_name, ".concept c2
+        ON CASE 
+            WHEN ca.ancestor_concept_id = sc.source_concept_id 
+                THEN c2.concept_id = ca.descendant_concept_id
+            ELSE c2.concept_id = ca.ancestor_concept_id
+           END
+    WHERE sc.source_concept_id IS NOT NULL
+        AND c2.invalid_reason IS NULL
+        AND ca.min_levels_of_separation >= 1
+        AND ca.min_levels_of_separation <= ", max_mapping_distance, "
+        AND NOT EXISTS (
+            SELECT 1 FROM direct_mappings dm
+            WHERE dm.input_code = sc.input_code
+        )
+),
+
+-- Step 4: Combine all mappings
+all_mappings AS (
+    SELECT * FROM direct_mappings
+    UNION ALL
+    SELECT * FROM hierarchy_mappings
+),
+
+-- Step 5: Unmapped codes (no mapping found)
+unmapped_codes AS (
+    SELECT 
+        sc.input_code,
+        sc.input_vocab,
+        sc.source_concept_id,
+        sc.source_concept_name,
+        NULL AS target_concept_id,
+        NULL AS target_code,
+        NULL AS target_name,
+        NULL AS target_vocab,
+        NULL AS target_domain,
+        NULL AS standard_concept,
+        'UNMAPPED' AS mapping_type,
+        NULL AS mapping_confidence,
+        999 AS mapping_distance
+    FROM source_concepts sc
+    WHERE NOT EXISTS (SELECT 1 FROM all_mappings am WHERE am.input_code = sc.input_code)
+        AND sc.source_concept_id IS NOT NULL
+),
+
+-- Step 6: Unknown codes (not in OMOP)
+unknown_codes AS (
+    SELECT 
+        ic.input_code,
+        ic.input_vocab,
+        NULL AS source_concept_id,
+        NULL AS source_concept_name,
+        NULL AS target_concept_id,
+        NULL AS target_code,
+        NULL AS target_name,
+        NULL AS target_vocab,
+        NULL AS target_domain,
+        NULL AS standard_concept,
+        'NOT_FOUND' AS mapping_type,
+        NULL AS mapping_confidence,
+        999 AS mapping_distance
+    FROM input_codes ic
+    WHERE NOT EXISTS (
+        SELECT 1 FROM source_concepts sc
+        WHERE sc.input_code = ic.input_code AND sc.source_concept_id IS NOT NULL
+    )
+),
+
+-- Step 7: Final results
+final_results AS (
+    SELECT * FROM all_mappings
+    UNION ALL
+    SELECT * FROM unmapped_codes
+    UNION ALL
+    SELECT * FROM unknown_codes
+)
+
+-- Final output
+SELECT 
+    fr.input_code,
+    fr.input_vocab,
+    fr.source_concept_name,
+    fr.target_concept_id,
+    fr.target_code,
+    fr.target_name,
+    fr.target_vocab,
+    fr.target_domain,
+    fr.standard_concept,
+    fr.mapping_type,
+    fr.mapping_confidence,
+    fr.mapping_distance,
+    CASE 
+        WHEN fr.mapping_type IN ('UNMAPPED', 'NOT_FOUND') THEN 'REVIEW_REQUIRED'
+        WHEN fr.mapping_type = 'DIRECT' THEN 'MAPPED'
+        ELSE 'REVIEW_SUGGESTED'
+    END AS review_flag
+FROM final_results fr
+ORDER BY 
+    fr.input_code,
+    CASE 
+        WHEN fr.mapping_type = 'DIRECT' THEN 1
+        ELSE 2
+    END,
+    fr.mapping_distance;
+  ")
+
+# Execute the query
+result <- DBI::dbGetQuery(con, query)
+
+return(result)
+}
